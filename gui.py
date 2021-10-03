@@ -1,9 +1,10 @@
 from PyQt5.QtWidgets import QMainWindow, QLabel, QGridLayout, QWidget, QPushButton, QTextBrowser, QHBoxLayout, QVBoxLayout, QTabWidget, QMenu, QAction, QFileDialog,\
-    QSizePolicy, QMessageBox, QScrollArea, QTextEdit, QStyle
-from PyQt5.QtCore import QSize
-from PyQt5.QtGui import QPixmap, QImage, QPalette, QIcon
+    QSizePolicy, QMessageBox, QScrollArea, QTextEdit, QStyle, QListWidget
+from PyQt5.QtCore import QSize, QEvent
+from PyQt5.QtGui import QPixmap, QImage, QPalette, QIcon, QTextLayout, QFont
 from PyQt5.Qt import Qt
 import sys
+from simulationSetup import InputTab
 
 
 class MainWindow(QMainWindow):
@@ -15,13 +16,12 @@ class MainWindow(QMainWindow):
 
         self.setWindowTitle("Iguana")
         self.resize(760,600)
-        self.scaleFactor = 1
         self.shiftDown = False
-        self.tabCount= 2
+        self.tabCount = 0
 
         # create widgets
         self.button = QPushButton()
-        self.button.setText("one")
+        self.button.setText("Run Iguana")
         self.button.clicked.connect(self.runIguana)
         self.button2 = QPushButton()
         self.button2.setText("two")
@@ -30,29 +30,16 @@ class MainWindow(QMainWindow):
         self.button4 = QPushButton()
         self.button4.setText("four")
 
-        self.imageLabel = QLabel()
-        self.imageLabel.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
-        self.imageLabel.setScaledContents(True)
-
-        self.scrollArea = QScrollArea()
-        self.scrollArea.setMinimumSize(300,200)
-        self.scrollArea.setWidget(self.imageLabel)
-        self.scrollArea.setVisible(True)
-
         self.tabWidget = QTabWidget()
-        self.tab1 = QWidget()
-        self.tab2 = QWidget()
+        self.tabList = [InputTab()]
+        self.tabWidget.installEventFilter(self)
 
         self.textBrowser = QTextEdit()
-        self.textBrowser.setMinimumSize(QSize(0, 50))
+        self.textBrowser.setMinimumSize(QSize(100, 100))
         self.textBrowser.setMaximumSize(QSize(16777215, 150))
 
         # create layouts and add widgets to them
-        self.tab2Layout = QHBoxLayout()
-        self.tab2Layout.addWidget(self.scrollArea)
-        self.tab2.setLayout(self.tab2Layout)
-        self.tabWidget.addTab(self.tab1, "SimulationSetup")
-        self.tabWidget.addTab(self.tab2, "ImageViewer")
+        self.tabWidget.addTab(self.tabList[0], "SimulationSetup")
 
         self.topLeftLayout = QVBoxLayout()
         self.topLeftLayout.addWidget(self.button, 0)
@@ -76,27 +63,46 @@ class MainWindow(QMainWindow):
         self.mainWidget.setLayout(self.mainLayout)
         self.setCentralWidget(self.mainWidget)
 
-    def keyPressEvent(self, event2):
-        if event2.key() == Qt.Key_Shift:
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key_Shift:
             self.shiftDown = True
-            self.scrollArea.verticalScrollBar().setEnabled(False)
+            self.tabList[self.tabWidget.currentIndex()].scrollArea.verticalScrollBar().setEnabled(False)
 
-    def keyReleaseEvent(self, event3):
-        if event3.key() == Qt.Key_Shift:
+    def keyReleaseEvent(self, event):
+        if event.key() == Qt.Key_Shift:
             self.shiftDown = False
-            self.scrollArea.verticalScrollBar().setEnabled(True)
+            self.tabList[self.tabWidget.currentIndex()].scrollArea.verticalScrollBar().setEnabled(True)
+
 
     def wheelEvent(self, event):
         # if the shift is held down then when the wheel event triggers, zoom is increased/decreased
         if self.shiftDown:
             mouseInput = event.angleDelta().y()
             if mouseInput != abs(mouseInput):
-                self.scaleFactor *= 0.8
+                self.tabList[self.tabWidget.currentIndex()].scaleFactor *= 0.8
             else:
-                self.scaleFactor *= 1.25
-            print(self.scaleFactor)
+                self.tabList[self.tabWidget.currentIndex()].scaleFactor *= 1.25
+            print(self.tabList[self.tabWidget.currentIndex()].scaleFactor)
 
-            self.imageLabel.resize(self.scaleFactor * self.imageLabel.pixmap().size())
+            self.tabList[self.tabWidget.currentIndex()].imageLabel.resize(self.tabList[self.tabWidget.currentIndex()].scaleFactor * self.tabList[self.tabWidget.currentIndex()].imageLabel.pixmap().size())
+
+    def eventFilter(self, source, event):
+        if event.type() == QEvent.ContextMenu and source is self.tabWidget:
+            print(event)
+            print(source)
+            menu = QMenu()
+            deleteAction = menu.addAction('Delete Tab')
+            helpAction = menu.addAction('Help')
+            action = menu.exec_(self.mapToGlobal(event.pos()))
+            currentTab = self.tabWidget.currentIndex()
+            if action == deleteAction and currentTab != 0:
+                self.tabWidget.removeTab(currentTab)
+                del self.tabList[currentTab]
+                self.tabCount += -1
+
+            return True
+
+        return super().eventFilter(source, event)
 
     def createActions(self):
         self.openImageAct = QAction("&Image Tab", self, shortcut="Ctrl+O", triggered=self.loadImageAct)
@@ -118,31 +124,21 @@ class MainWindow(QMainWindow):
         self.simulationPathWindow.show()
 
     def loadImageAct(self):
-        self.loadImage(self.getImagePath())
         self.newImageTab()
+        self.loadImage(self.getImagePath())
 
     def loadImage(self, fileName):
         if fileName:
             image = QImage(fileName)
-            self.imageLabel = QLabel()
-            self.imageLabel.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
-            self.imageLabel.setScaledContents(True)
-            self.imageLabel.setPixmap(QPixmap.fromImage(image))
-            self.imageLabel.adjustSize()
+            self.tabList[-1].imageLabel.setPixmap(QPixmap.fromImage(image))
+            self.tabList[-1].imageLabel.adjustSize()
             if image.isNull():
                 self.textBrowser.append("Image filepath invalid")
 
     def newImageTab(self):
-        self.scrollArea = QScrollArea()
-        self.scrollArea.setMinimumSize(300, 200)
-        self.scrollArea.setWidget(self.imageLabel)
-        self.scrollArea.setVisible(True)
-        newTab = QWidget()
-        newTabLayout = QHBoxLayout()
-        newTabLayout.addWidget(self.scrollArea)
-        newTab.setLayout(newTabLayout)
+        self.tabList.append(NewImageTab())
         self.tabCount += 1
-        self.tabWidget.addTab(newTab, "Image Tab " + str(self.tabCount))
+        self.tabWidget.addTab(self.tabList[-1], "Image Tab " + str(self.tabCount))
 
     def getImagePath(self):
         options = QFileDialog.Options()
@@ -155,8 +151,8 @@ class MainWindow(QMainWindow):
         self.textBrowser.append("Iguana running!")
         # this will be where iguana will be run from
         self.getLog()
-        self.imageLabel.setPixmap(QPixmap.fromImage(QImage('chicken.jpg')))
-        self.imageLabel.adjustSize()
+        self.newImageTab()
+        self.loadImage('chicken.jpg')
         self.newMenu.setEnabled(True)
 
     def getLog(self):
@@ -230,3 +226,23 @@ class SystemPathWindow(QWidget):
         #this will somehow check if the blender and Iguana paths are valid
 
 
+class NewImageTab(QWidget):
+    """
+    Create a new image tab
+    """
+    def __init__(self):
+        super().__init__()
+        self.scaleFactor = 1
+
+        self.imageLabel = QLabel()
+        self.imageLabel.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
+        self.imageLabel.setScaledContents(True)
+
+        self.scrollArea = QScrollArea()
+        self.scrollArea.setMinimumSize(300,200)
+        self.scrollArea.setWidget(self.imageLabel)
+        self.scrollArea.setVisible(True)
+
+        self.tabLayout = QHBoxLayout()
+        self.tabLayout.addWidget(self.scrollArea)
+        self.setLayout(self.tabLayout)
